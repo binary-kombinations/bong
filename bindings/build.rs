@@ -7,12 +7,21 @@ fn main() {
         Windows::Win32::UI::WindowsAndMessaging::GetClassNameW,
         Windows::Win32::UI::WindowsAndMessaging::SendMessageW,
 
+        Windows::Win32::Foundation::CloseHandle,
+
+        Windows::Win32::System::Threading::CreateEventW,
+        Windows::Win32::System::Threading::SetEvent,
+        Windows::Win32::System::Threading::WaitForSingleObject,
+
+        Windows::Win32::System::Diagnostics::Debug::GetLastError,
         Windows::Win32::System::Diagnostics::Debug::OutputDebugStringW,
 
         Windows::Win32::System::SystemServices::IMAGE_DOS_HEADER,
 
         Windows::Win32::UI::WindowsAndMessaging::MSG,
         Windows::Win32::UI::WindowsAndMessaging::CWPSTRUCT,
+
+        Windows::Win32::System::WindowsProgramming::INFINITE,
 
         Windows::Win32::UI::Controls::WM_CONTEXTMENU,
         Windows::Win32::UI::Controls::EM_ENABLESEARCHWEB,

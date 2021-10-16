@@ -1,3 +1,4 @@
+mod event;
 mod util;
 mod windows_hook;
 
@@ -18,9 +19,12 @@ use bindings::Windows::Win32::{
 use widestring::U16CStr;
 
 use crate::{
+    event::Event,
     util::{get_class_name, image_base},
     windows_hook::WindowsHook,
 };
+
+const SHUTDOWN_EVENT: &'static str = "BONG_SHUTDOWN_EVENT_033e0095-da6d-4e9e-a6c7-a9fb45871522";
 
 extern "system" fn call_wndproc_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let _result = catch_unwind(|| {
@@ -112,11 +116,48 @@ fn do_hook(command_line: *const u16) -> anyhow::Result<()> {
         .parse()
         .with_context(|| format!("Invalid TID: {}", command_line))?;
 
-    let _call_wndproc_hook =
-        unsafe { WindowsHook::set(WH_CALLWNDPROC, Some(call_wndproc_hook), image_base(), tid)? };
+    let (shutdown_event, event_created) = Event::new(true, false, Some(SHUTDOWN_EVENT))?;
 
-    let _get_message_hook =
-        unsafe { WindowsHook::set(WH_GETMESSAGE, Some(get_message_hook), image_base(), tid)? };
+    let mut _call_wndproc_hook_handle = None;
+    let mut _get_message_hook_handle = None;
+
+    if event_created {
+        // We're the first. Install the hooks.
+
+        _call_wndproc_hook_handle = Some(unsafe {
+            WindowsHook::set(WH_CALLWNDPROC, Some(call_wndproc_hook), image_base(), tid)?
+        });
+
+        _get_message_hook_handle = Some(unsafe {
+            WindowsHook::set(WH_GETMESSAGE, Some(get_message_hook), image_base(), tid)?
+        });
+    }
+
+    shutdown_event.wait()?;
+
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "system" fn unhookW(
+    hwnd: HWND,
+    _hinstance: HINSTANCE,
+    _command_line: *const u16,
+    _cmd_show: i32,
+) {
+    let _result = catch_unwind(|| {
+        if let Err(error) = do_unhook() {
+            unsafe {
+                MessageBoxW(hwnd, format!("{:?}", error), "bong", MB_OK | MB_ICONERROR);
+            }
+        }
+    });
+}
+
+fn do_unhook() -> anyhow::Result<()> {
+    let (shutdown_event, _) = Event::new(true, false, Some(SHUTDOWN_EVENT))?;
+
+    shutdown_event.signal()?;
 
     Ok(())
 }
