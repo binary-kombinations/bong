@@ -11,6 +11,7 @@ fn main() {
 
         Windows::Win32::System::SystemServices::IMAGE_DOS_HEADER,
 
+        Windows::Win32::UI::WindowsAndMessaging::MSG,
         Windows::Win32::UI::WindowsAndMessaging::CWPSTRUCT,
 
         Windows::Win32::UI::Controls::WM_CONTEXTMENU,

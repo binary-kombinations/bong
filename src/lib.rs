@@ -10,8 +10,8 @@ use bindings::Windows::Win32::{
     UI::{
         Controls::{EM_ENABLESEARCHWEB, WM_CONTEXTMENU},
         WindowsAndMessaging::{
-            CallNextHookEx, MessageBoxW, SendMessageW, CWPSTRUCT, MB_ICONERROR, MB_OK,
-            WH_CALLWNDPROC,
+            CallNextHookEx, MessageBoxW, SendMessageW, CWPSTRUCT, MB_ICONERROR, MB_OK, MSG,
+            WH_CALLWNDPROC, WH_GETMESSAGE,
         },
     },
 };
@@ -31,7 +31,7 @@ extern "system" fn call_wndproc_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
         let message_info = unsafe { (lparam.0 as *const CWPSTRUCT).as_ref() };
 
         if let Some(message_info) = message_info {
-            if let Err(error) = process_call_wndproc_hook(message_info) {
+            if let Err(error) = enable_search(message_info.hwnd, message_info.message) {
                 unsafe {
                     OutputDebugStringW(format!("bong | {:?}", error));
                 }
@@ -42,23 +42,38 @@ extern "system" fn call_wndproc_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
-fn process_call_wndproc_hook(message_info: &CWPSTRUCT) -> anyhow::Result<()> {
-    if message_info.message != WM_CONTEXTMENU {
+extern "system" fn get_message_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let _result = catch_unwind(|| {
+        if code < 0 {
+            return;
+        }
+
+        let message = unsafe { (lparam.0 as *const MSG).as_ref() };
+
+        if let Some(message) = message {
+            if let Err(error) = enable_search(message.hwnd, message.message) {
+                unsafe {
+                    OutputDebugStringW(format!("bong | {:?}", error));
+                }
+            }
+        }
+    });
+
+    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+fn enable_search(hwnd: HWND, message: u32) -> anyhow::Result<()> {
+    if message != WM_CONTEXTMENU {
         return Ok(());
     }
 
-    let owner_class_name = unsafe { get_class_name(message_info.hwnd)? };
-    if owner_class_name.to_string_lossy().to_lowercase() != "edit" {
+    let class_name = unsafe { get_class_name(hwnd)? };
+    if class_name.to_string_lossy().to_lowercase() != "edit" {
         return Ok(());
     }
 
     unsafe {
-        SendMessageW(
-            message_info.hwnd,
-            EM_ENABLESEARCHWEB,
-            WPARAM(true.into()),
-            LPARAM(0),
-        );
+        SendMessageW(hwnd, EM_ENABLESEARCHWEB, WPARAM(true.into()), LPARAM(0));
     }
 
     Ok(())
@@ -97,14 +112,11 @@ fn do_hook(command_line: *const u16) -> anyhow::Result<()> {
         .parse()
         .with_context(|| format!("Invalid TID: {}", command_line))?;
 
-    let _edit_menu_hook = unsafe {
-        WindowsHook::set(
-            WH_CALLWNDPROC,
-            Some(call_wndproc_hook),
-            image_base(),
-            tid,
-        )?
-    };
+    let _call_wndproc_hook =
+        unsafe { WindowsHook::set(WH_CALLWNDPROC, Some(call_wndproc_hook), image_base(), tid)? };
+
+    let _get_message_hook =
+        unsafe { WindowsHook::set(WH_GETMESSAGE, Some(get_message_hook), image_base(), tid)? };
 
     Ok(())
 }
